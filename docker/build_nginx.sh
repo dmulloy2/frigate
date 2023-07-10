@@ -7,8 +7,8 @@ VOD_MODULE_VERSION="1.30"
 SECURE_TOKEN_MODULE_VERSION="1.4"
 RTMP_MODULE_VERSION="1.2.1"
 
-cp /etc/apt/sources.list /etc/apt/sources.list.d/sources-src.list
-sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
+#cp /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list.d/sources-src.list
+#sed -i 's|deb http|deb-src http|g' /etc/apt/sources.list.d/sources-src.list
 apt-get update
 
 apt-get -yqq build-dep nginx

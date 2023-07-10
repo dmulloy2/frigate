@@ -3,11 +3,11 @@
 # https://askubuntu.com/questions/972516/debian-frontend-environment-variable
 ARG DEBIAN_FRONTEND=noninteractive
 
-FROM debian:11 AS base
+FROM debian:12 AS base
 
-FROM --platform=linux/amd64 debian:11 AS base_amd64
+FROM --platform=linux/amd64 debian:12 AS base_amd64
 
-FROM debian:11-slim AS slim-base
+FROM debian:12-slim AS slim-base
 
 FROM slim-base AS wget
 ARG DEBIAN_FRONTEND
@@ -25,6 +25,7 @@ ENV CCACHE_MAXSIZE 2G
 RUN --mount=type=tmpfs,target=/tmp --mount=type=tmpfs,target=/var/cache/apt \
     --mount=type=bind,source=docker/build_nginx.sh,target=/deps/build_nginx.sh \
     --mount=type=cache,target=/root/.ccache \
+    --mount=type=bind,source=docker/sources-src.list,target=/etc/apt/sources.list.d/sources-src.list \
     /deps/build_nginx.sh
 
 FROM wget AS go2rtc
@@ -34,59 +35,59 @@ RUN wget -qO go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.5.0/
     && chmod +x go2rtc
 
 
-####
-#
-# OpenVino Support
-#
-# 1. Download and convert a model from Intel's Public Open Model Zoo
-# 2. Build libUSB without udev to handle NCS2 enumeration
-#
-####
-# Download and Convert OpenVino model
-FROM base_amd64 AS ov-converter
-ARG DEBIAN_FRONTEND
+# ####
+# #
+# # OpenVino Support
+# #
+# # 1. Download and convert a model from Intel's Public Open Model Zoo
+# # 2. Build libUSB without udev to handle NCS2 enumeration
+# #
+# ####
+# # Download and Convert OpenVino model
+# FROM base_amd64 AS ov-converter
+# ARG DEBIAN_FRONTEND
 
-# Install OpenVino Runtime and Dev library
-COPY requirements-ov.txt /requirements-ov.txt
-RUN apt-get -qq update \
-    && apt-get -qq install -y wget python3 python3-distutils \
-    && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
-    && python3 get-pip.py "pip" \
-    && pip install -r /requirements-ov.txt
+# # Install OpenVino Runtime and Dev library
+# COPY requirements-ov.txt /requirements-ov.txt
+# RUN apt-get -qq update \
+#     && apt-get -qq install -y wget python3 python3-distutils python3-pip \
+#     # && wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+#     # && python3 get-pip.py "pip" \
+#     && python3 -m pip install -r /requirements-ov.txt --break-system-packages
 
-# Get OpenVino Model
-RUN mkdir /models \
-    && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
-    && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
+# # Get OpenVino Model
+# RUN mkdir /models \
+#     && cd /models && omz_downloader --name ssdlite_mobilenet_v2 \
+#     && cd /models && omz_converter --name ssdlite_mobilenet_v2 --precision FP16
 
 
-# libUSB - No Udev
-FROM wget as libusb-build
-ARG TARGETARCH
-ARG DEBIAN_FRONTEND
-ENV CCACHE_DIR /root/.ccache
-ENV CCACHE_MAXSIZE 2G
+# # libUSB - No Udev
+# FROM wget as libusb-build
+# ARG TARGETARCH
+# ARG DEBIAN_FRONTEND
+# ENV CCACHE_DIR /root/.ccache
+# ENV CCACHE_MAXSIZE 2G
 
-# Build libUSB without udev.  Needed for Openvino NCS2 support
-WORKDIR /opt
-RUN apt-get update && apt-get install -y unzip build-essential automake libtool ccache
-RUN --mount=type=cache,target=/root/.ccache wget -q https://github.com/libusb/libusb/archive/v1.0.25.zip -O v1.0.25.zip && \
-    unzip v1.0.25.zip && cd libusb-1.0.25 && \
-    ./bootstrap.sh && \
-    ./configure CC='ccache gcc' CCX='ccache g++' --disable-udev --enable-shared && \
-    make -j $(nproc --all)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends libusb-1.0-0-dev && \
-    rm -rf /var/lib/apt/lists/*
-WORKDIR /opt/libusb-1.0.25/libusb
-RUN /bin/mkdir -p '/usr/local/lib' && \
-    /bin/bash ../libtool  --mode=install /usr/bin/install -c libusb-1.0.la '/usr/local/lib' && \
-    /bin/mkdir -p '/usr/local/include/libusb-1.0' && \
-    /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' && \
-    /bin/mkdir -p '/usr/local/lib/pkgconfig' && \
-    cd  /opt/libusb-1.0.25/ && \
-    /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
-    ldconfig
+# # Build libUSB without udev.  Needed for Openvino NCS2 support
+# WORKDIR /opt
+# RUN apt-get update && apt-get install -y unzip build-essential automake libtool ccache
+# RUN --mount=type=cache,target=/root/.ccache wget -q https://github.com/libusb/libusb/archive/v1.0.25.zip -O v1.0.25.zip && \
+#     unzip v1.0.25.zip && cd libusb-1.0.25 && \
+#     ./bootstrap.sh && \
+#     ./configure CC='ccache gcc' CCX='ccache g++' --disable-udev --enable-shared && \
+#     make -j $(nproc --all)
+# RUN apt-get update && \
+#     apt-get install -y --no-install-recommends libusb-1.0-0-dev && \
+#     rm -rf /var/lib/apt/lists/*
+# WORKDIR /opt/libusb-1.0.25/libusb
+# RUN /bin/mkdir -p '/usr/local/lib' && \
+#     /bin/bash ../libtool  --mode=install /usr/bin/install -c libusb-1.0.la '/usr/local/lib' && \
+#     /bin/mkdir -p '/usr/local/include/libusb-1.0' && \
+#     /usr/bin/install -c -m 644 libusb.h '/usr/local/include/libusb-1.0' && \
+#     /bin/mkdir -p '/usr/local/lib/pkgconfig' && \
+#     cd  /opt/libusb-1.0.25/ && \
+#     /usr/bin/install -c -m 644 libusb-1.0.pc '/usr/local/lib/pkgconfig' && \
+#     ldconfig
 
 FROM wget AS models
 
@@ -95,9 +96,9 @@ RUN wget -qO edgetpu_model.tflite https://github.com/google-coral/test_data/raw/
 RUN wget -qO cpu_model.tflite https://github.com/google-coral/test_data/raw/release-frogfish/ssdlite_mobiledet_coco_qat_postprocess.tflite
 COPY labelmap.txt .
 # Copy OpenVino model
-COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 openvino-model
-RUN wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O openvino-model/coco_91cl_bkgr.txt && \
-    sed -i 's/truck/car/g' openvino-model/coco_91cl_bkgr.txt
+# COPY --from=ov-converter /models/public/ssdlite_mobilenet_v2/FP16 openvino-model
+# RUN wget -q https://github.com/openvinotoolkit/open_model_zoo/raw/master/data/dataset_classes/coco_91cl_bkgr.txt -O openvino-model/coco_91cl_bkgr.txt && \
+#     sed -i 's/truck/car/g' openvino-model/coco_91cl_bkgr.txt
 # Get Audio Model and labels
 RUN wget -qO cpu_audio_model.tflite https://tfhub.dev/google/lite-model/yamnet/classification/tflite/1?lite-format=tflite
 COPY audio-labelmap.txt .
@@ -125,13 +126,14 @@ RUN apt-get -qq update \
     && apt-get -qq install -y \
     python3 \
     python3-dev \
+    python3-pip \
     wget \
     # opencv dependencies
     build-essential cmake git pkg-config libgtk-3-dev \
     libavcodec-dev libavformat-dev libswscale-dev libv4l-dev \
     libxvidcore-dev libx264-dev libjpeg-dev libpng-dev libtiff-dev \
     gfortran openexr libatlas-base-dev libssl-dev\
-    libtbb2 libtbb-dev libdc1394-22-dev libopenexr-dev \
+    libtbb-dev libdc1394-dev libopenexr-dev \
     libgstreamer-plugins-base1.0-dev libgstreamer1.0-dev \
     # scipy dependencies
     gcc gfortran libopenblas-dev liblapack-dev \
@@ -139,14 +141,14 @@ RUN apt-get -qq update \
     g++ cython3 && \
     rm -rf /var/lib/apt/lists/*
 
-RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
-    && python3 get-pip.py "pip"
+# RUN wget -q https://bootstrap.pypa.io/get-pip.py -O get-pip.py \
+#     && python3 get-pip.py "pip"
 
 COPY requirements.txt /requirements.txt
-RUN pip3 install -r requirements.txt
+RUN python3 -m pip install -r requirements.txt --break-system-packages
 
 COPY requirements-wheels.txt /requirements-wheels.txt
-RUN pip3 wheel --wheel-dir=/wheels -r requirements-wheels.txt
+RUN python3 -m pip wheel --wheel-dir=/wheels -r requirements-wheels.txt
 
 # Make this a separate target so it can be built/cached optionally
 FROM wheels as trt-wheels
@@ -154,15 +156,15 @@ ARG DEBIAN_FRONTEND
 ARG TARGETARCH
 
 # Add TensorRT wheels to another folder
-COPY requirements-tensorrt.txt /requirements-tensorrt.txt
-RUN mkdir -p /trt-wheels && pip3 wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
+# COPY requirements-tensorrt.txt /requirements-tensorrt.txt
+# RUN mkdir -p /trt-wheels && python3 -m pip wheel --wheel-dir=/trt-wheels -r requirements-tensorrt.txt
 
 
 # Collect deps in a single layer
 FROM scratch AS deps-rootfs
 COPY --from=nginx /usr/local/nginx/ /usr/local/nginx/
 COPY --from=go2rtc /rootfs/ /
-COPY --from=libusb-build /usr/local/lib /usr/local/lib
+# COPY --from=libusb-build /usr/local/lib /usr/local/lib
 COPY --from=s6-overlay /rootfs/ /
 COPY --from=models /rootfs/ /
 COPY docker/rootfs/ /
@@ -180,14 +182,14 @@ ARG APT_KEY_DONT_WARN_ON_DANGEROUS_USAGE=DontWarn
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES="compute,video,utility"
 
-ENV PATH="/usr/lib/btbn-ffmpeg/bin:/usr/local/go2rtc/bin:/usr/local/nginx/sbin:${PATH}"
+ENV PATH="/usr/lib/jellyfin-ffmpeg:/usr/local/go2rtc/bin:/usr/local/nginx/sbin:${PATH}"
 
 # Install dependencies
 RUN --mount=type=bind,source=docker/install_deps.sh,target=/deps/install_deps.sh \
     /deps/install_deps.sh
 
 RUN --mount=type=bind,from=wheels,source=/wheels,target=/deps/wheels \
-    pip3 install -U /deps/wheels/*.whl
+    pip3 install -U /deps/wheels/*.whl --break-system-packages
 
 COPY --from=deps-rootfs / /
 
@@ -230,7 +232,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=bind,source=./requirements-dev.txt,target=/workspace/frigate/requirements-dev.txt \
-    pip3 install -r requirements-dev.txt
+    pip3 install -r requirements-dev.txt--break-system-packages
 
 CMD ["sleep", "infinity"]
 
@@ -259,18 +261,44 @@ COPY --from=web-build /work/dist/ web/
 # Frigate final container
 FROM deps AS frigate
 
+RUN apt-get update \
+    && apt-get install --no-install-recommends --no-install-suggests -y \
+        wget software-properties-common build-essential libnss3-dev \
+        zlib1g-dev libgdbm-dev libncurses5-dev libssl-dev libffi-dev \
+        libreadline-dev libsqlite3-dev libbz2-dev
+
+RUN wget -q https://www.python.org/ftp/python/3.9.17/Python-3.9.17.tgz \
+    && tar xvf Python-3.9.17.tgz \
+    && cd Python-3.9.17 \
+    && ./configure --enable-optimizations --with-ensurepip=install \
+    && make altinstall \
+    && cd ../
+
 WORKDIR /opt/frigate/
 COPY --from=rootfs / /
 
-# Frigate w/ TensorRT Support as separate image
-FROM frigate AS frigate-tensorrt
-RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
-    pip3 install -U /deps/trt-wheels/*.whl && \
-    ln -s libnvrtc.so.11.2 /usr/local/lib/python3.9/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so && \
-    ldconfig
+RUN ln -sf /bin/bash /bin/sh
 
-# Dev Container w/ TRT
-FROM devcontainer AS devcontainer-trt
+COPY real-requirements.txt real-requirements.txt
+RUN python3.9 -m ensurepip --default-pip \
+    && python3.9 -m venv frigate-env \
+    && source ./frigate-env/bin/activate \
+    && pip install --upgrade pip \
+    && pip install wheel \
+    && pip install pip install --extra-index-url https://google-coral.github.io/py-repo/ pycoral \
+    && pip install -r real-requirements.txt
 
-RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
-    pip3 install -U /deps/trt-wheels/*.whl
+# # Frigate w/ TensorRT Support as separate image
+# FROM frigate AS frigate-tensorrt
+# RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
+#     pip3 install -U /deps/trt-wheels/*.whl --break-system-packages && \
+#     ln -s libnvrtc.so.11.2 /usr/local/lib/python3.9/dist-packages/nvidia/cuda_nvrtc/lib/libnvrtc.so && \
+#     ldconfig
+
+# # Dev Container w/ TRT
+# FROM devcontainer AS devcontainer-trt
+
+# RUN --mount=type=bind,from=trt-wheels,source=/trt-wheels,target=/deps/trt-wheels \
+#     pip3 install -U /deps/trt-wheels/*.whl --break-system-packages
+
+# ENTRYPOINT ["/bin/bash"]

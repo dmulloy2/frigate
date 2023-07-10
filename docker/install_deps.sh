@@ -24,19 +24,38 @@ echo "deb https://packages.cloud.google.com/apt coral-edgetpu-stable main" | tee
 echo "libedgetpu1-max libedgetpu/accepted-eula select true" | debconf-set-selections
 
 # enable non-free repo
-sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list
+sed -i -e's/ main/ main contrib non-free/g' /etc/apt/sources.list.d/debian.sources
 
 # coral drivers
-apt-get -qq update
-apt-get -qq install --no-install-recommends --no-install-suggests -y \
-    libedgetpu1-max python3-tflite-runtime python3-pycoral
+apt-get update
+apt-get install --no-install-recommends --no-install-suggests -y \
+    wget software-properties-common build-essential libnss3-dev \
+    zlib1g-dev libgdbm-dev libncurses5-dev libssl-dev libffi-dev \
+    libreadline-dev libsqlite3-dev libbz2-dev
+
+wget -q https://www.python.org/ftp/python/3.9.17/Python-3.9.17.tgz
+tar xvf Python-3.9.17.tgz
+cd Python-3.9.17
+./configure --enable-optimizations --with-ensurepip=install
+make altinstall
+cd ../
+
+python3.9 -m ensurepip --default-pip
+
+apt-get install --no-install-recommends --no-install-suggests -y \
+    libedgetpu1-max \
+    # python3-tflite-runtime python3-pycoral
+
+python3.9 -m pip install --extra-index-url https://google-coral.github.io/py-repo/ pycoral
 
 # btbn-ffmpeg -> amd64
 if [[ "${TARGETARCH}" == "amd64" ]]; then
-    mkdir -p /usr/lib/btbn-ffmpeg
-    wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2022-07-31-12-37/ffmpeg-n5.1-2-g915ef932a3-linux64-gpl-5.1.tar.xz"
-    tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
-    rm -rf btbn-ffmpeg.tar.xz /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
+    # mkdir -p /usr/lib/btbn-ffmpeg
+    # wget -qO btbn-ffmpeg.tar.xz "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2023-07-06-12-51/ffmpeg-n5.1.3-14-ge5b5dd6653-linux64-gpl-5.1.tar.xz"
+    # tar -xf btbn-ffmpeg.tar.xz -C /usr/lib/btbn-ffmpeg --strip-components 1
+    # rm -rf btbn-ffmpeg.tar.xz /usr/lib/btbn-ffmpeg/doc /usr/lib/btbn-ffmpeg/bin/ffplay
+    wget -qO ffmpeg.deb https://github.com/jellyfin/jellyfin-ffmpeg/releases/download/v5.1.3-3/jellyfin-ffmpeg5_5.1.3-3-bookworm_amd64.deb
+    apt-get install -y ./ffmpeg.deb
 fi
 
 # ffmpeg -> arm64

@@ -18,3 +18,4 @@ web/coverage
 core
 !/web/**/*.ts
 .idea/*
+venv/
